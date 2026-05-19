@@ -56,6 +56,13 @@ class LLMReranker:
             response_format=self.schema_for_single_block
         )
 
+        response_data = {
+            "model": completion.model,
+            "input_tokens": completion.usage.prompt_tokens,
+            "output_tokens": completion.usage.completion_tokens
+        }
+        print(response_data)
+
         response = completion.choices[0].message.parsed
         response_dict = response.model_dump()
         
@@ -79,6 +86,13 @@ class LLMReranker:
             ],
             response_format=self.schema_for_multiple_blocks
         )
+
+        response_data = {
+            "model": completion.model,
+            "input_tokens": completion.usage.prompt_tokens,
+            "output_tokens": completion.usage.completion_tokens
+        }
+        print(response_data)
 
         response = completion.choices[0].message.parsed
         response_dict = response.model_dump()

@@ -12,7 +12,7 @@ from src.parsed_documents_merging import PageTextPreparation
 from src.text_splitter import TextSplitter
 from src.ingestion import VectorDBIngestor
 from src.ingestion import BM25Ingestor
-# from src.questions_processing import QuestionsProcessor
+from src.questions_processing import QuestionsProcessor
 # from src.tables_serialization import TableSerializer
 from src.url_parsing import URLParser
 
@@ -21,7 +21,7 @@ from src.retrieval import HybridRetriever
 
 @dataclass
 class PipelineConfig:
-    def __init__(self, root_path: Path, subset_name: str = "subset.csv", questions_file_name: str = "questions.json",
+    def __init__(self, root_path: Path, subset_name: str = "subset.csv", questions_file_name: str = "qa.yaml",
                  pdf_reports_dir_name: str = "pdf_docs", serialized: bool = False, config_suffix: str = ""):
         self.root_path = root_path
         suffix = "_ser_tab" if serialized else ""
@@ -56,8 +56,8 @@ class RunConfig:
     use_vector_dbs: bool = True
     use_bm25_db: bool = False
     llm_reranking: bool = False
-    llm_reranking_sample_size: int = 30
-    top_n_retrieval: int = 10
+    llm_reranking_sample_size: int = 15
+    top_n_retrieval: int = 7
     parallel_requests: int = 10
     pipeline_details: str = ""
     submission_file: bool = True
@@ -68,7 +68,7 @@ class RunConfig:
 
 
 class Pipeline:
-    def __init__(self, root_path: Path, subset_name: str = "subset.csv", questions_file_name: str = "questions.json",
+    def __init__(self, root_path: Path, subset_name: str = "subset.csv", questions_file_name: str = "qa.yaml",
                  pdf_reports_dir_name: str = "pdf_docs", run_config: RunConfig = RunConfig()):
         self.run_config = run_config
         self.paths = self._initialize_paths(root_path, subset_name, questions_file_name, pdf_reports_dir_name)
@@ -223,77 +223,75 @@ class Pipeline:
 
         print(f"URLS parsed and saved")
 
-    # def process_parsed_documents(self):
-    #     """Process parsed source documents through the pipeline:
-    #     1. Merge/normalize to unified JSON structure
-    #     2. Export to markdown
-    #     3. Chunk the documents
-    #     4. Create vector databases
-    #     """
-    #     print("Starting documents processing pipeline...")
-    #
-    #     print("Step 1: Merging/normalizing documents...")
-    #     self.merge_documents()
-    #
-    #     print("Step 2: Exporting documents to markdown...")
-    #     self.export_documents_to_markdown()
-    #
-    #     print("Step 3: Chunking documents...")
-    #     self.chunk_documents()
-    #
-    #     print("Step 4: Creating vector databases...")
-    #     self.create_vector_db()
-    #
-    #     print("Documents processing pipeline completed successfully!")
+    def process_parsed_documents(self):
+         """Process parsed source documents through the pipeline:
+         1. Merge/normalize to unified JSON structure
+         2. Export to markdown
+         3. Chunk the documents
+         4. Create vector databases
+         """
+         print("Starting documents processing pipeline...")
 
-    # def _get_next_available_filename(self, base_path: Path) -> Path:
-    #     """
-    #     Returns the next available filename by adding a numbered suffix if the file exists.
-    #     Example: If answers.json exists, returns answers_01.json, etc.
-    #     """
-    #     if not base_path.exists():
-    #         return base_path
-    #
-    #     stem = base_path.stem
-    #     suffix = base_path.suffix
-    #     parent = base_path.parent
-    #
-    #     counter = 1
-    #     while True:
-    #         new_filename = f"{stem}_{counter:02d}{suffix}"
-    #         new_path = parent / new_filename
-    #
-    #         if not new_path.exists():
-    #             return new_path
-    #         counter += 1
+         print("Step 1: Merging/normalizing documents...")
+         self.merge_documents()
 
-    # def process_questions(self):
-    #     processor = QuestionsProcessor(
-    #         vector_db_dir=self.paths.vector_db_dir,
-    #         documents_dir=self.paths.documents_dir,
-    #         questions_file_path=self.paths.questions_file_path,
-    #         new_challenge_pipeline=True,
-    #         subset_path=self.paths.subset_path,
-    #         parent_document_retrieval=self.run_config.parent_document_retrieval,
-    #         llm_reranking=self.run_config.llm_reranking,
-    #         llm_reranking_sample_size=self.run_config.llm_reranking_sample_size,
-    #         top_n_retrieval=self.run_config.top_n_retrieval,
-    #         parallel_requests=self.run_config.parallel_requests,
-    #         api_provider=self.run_config.api_provider,
-    #         answering_model=self.run_config.answering_model,
-    #         full_context=self.run_config.full_context
-    #     )
-    #
-    #     output_path = self._get_next_available_filename(self.paths.answers_file_path)
-    #
-    #     _ = processor.process_all_questions(
-    #         output_path=output_path,
-    #         submission_file=self.run_config.submission_file,
-    #         team_email=self.run_config.team_email,
-    #         submission_name=self.run_config.submission_name,
-    #         pipeline_details=self.run_config.pipeline_details
-    #     )
-    #     print(f"Answers saved to {output_path}")
+         print("Step 2: Exporting documents to markdown...")
+         self.export_documents_to_markdown()
+
+         print("Step 3: Chunking documents...")
+         self.chunk_documents()
+
+         print("Step 4: Creating vector databases...")
+         self.create_vector_db()
+
+         print("Documents processing pipeline completed successfully!")
+
+    def _get_next_available_filename(self, base_path: Path) -> Path:
+        """
+        Returns the next available filename by adding a numbered suffix if the file exists.
+        Example: If answers.json exists, returns answers_01.json, etc.
+        """
+        if not base_path.exists():
+            return base_path
+
+        stem = base_path.stem
+        suffix = base_path.suffix
+        parent = base_path.parent
+
+        counter = 1
+        while True:
+            new_filename = f"{stem}_{counter:02d}{suffix}"
+            new_path = parent / new_filename
+
+            if not new_path.exists():
+                return new_path
+            counter += 1
+
+    def process_questions(self):
+        processor = QuestionsProcessor(
+            vector_db_dir=self.paths.vector_db_dir,
+            documents_dir=self.paths.documents_dir,
+            questions_file_path=self.paths.questions_file_path,
+            new_challenge_pipeline=True,
+            subset_path=self.paths.subset_path,
+            parent_document_retrieval=self.run_config.parent_document_retrieval,
+            llm_reranking=self.run_config.llm_reranking,
+            llm_reranking_sample_size=self.run_config.llm_reranking_sample_size,
+            top_n_retrieval=self.run_config.top_n_retrieval,
+            parallel_requests=self.run_config.parallel_requests,
+            api_provider=self.run_config.api_provider,
+            answering_model=self.run_config.answering_model,
+            full_context=self.run_config.full_context
+        )
+
+        output_path = self._get_next_available_filename(self.paths.answers_file_path)
+
+        _ = processor.process_all_questions(
+            output_path=output_path,
+            submission_file=self.run_config.submission_file,
+            pipeline_details=self.run_config.pipeline_details
+        )
+        print(f"Answers saved to {output_path}")
 
 
 preprocess_configs = {"ser_tab": RunConfig(use_serialized_tables=True),

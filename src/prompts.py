@@ -16,6 +16,62 @@ def build_system_prompt(instruction: str = "", example: str = "", pydantic_schem
     return system_prompt
 
 
+class RephrasedQuestionsPrompt:
+    instruction = """
+You are a question rephrasing system.
+Your task is to break down a comparative question into individual questions for each company mentioned.
+Each output question must be self-contained, maintain the same intent and metric as the original question, be specific to the respective company, and use consistent phrasing.
+"""
+
+    class RephrasedQuestion(BaseModel):
+        """Individual question for a company"""
+        company_name: str = Field(description="Company name, exactly as provided in quotes in the original question")
+        question: str = Field(description="Rephrased question specific to this company")
+
+    class RephrasedQuestions(BaseModel):
+        """List of rephrased questions"""
+        questions: List['RephrasedQuestionsPrompt.RephrasedQuestion'] = Field(
+            description="List of rephrased questions for each company")
+
+    pydantic_schema = '''
+class RephrasedQuestion(BaseModel):
+    """Individual question for a company"""
+    company_name: str = Field(description="Company name, exactly as provided in quotes in the original question")
+    question: str = Field(description="Rephrased question specific to this company")
+
+class RephrasedQuestions(BaseModel):
+    """List of rephrased questions"""
+    questions: List['RephrasedQuestionsPrompt.RephrasedQuestion'] = Field(description="List of rephrased questions for each company")
+'''
+
+    example = r"""
+Example:
+Input:
+Original comparative question: 'Which company had higher revenue in 2022, "Apple" or "Microsoft"?'
+Companies mentioned: "Apple", "Microsoft"
+
+Output:
+{
+    "questions": [
+        {
+            "company_name": "Apple",
+            "question": "What was Apple's revenue in 2022?"
+        },
+        {
+            "company_name": "Microsoft", 
+            "question": "What was Microsoft's revenue in 2022?"
+        }
+    ]
+}
+"""
+
+    user_prompt = "Original comparative question: '{question}'\n\nCompanies mentioned: {companies}"
+
+    system_prompt = build_system_prompt(instruction, example)
+
+    system_prompt_with_schema = build_system_prompt(instruction, example, pydantic_schema)
+
+
 class SubQuestionsPrompt:
     instruction = """
 You analyze user questions for decomposition.
@@ -24,7 +80,8 @@ Only split when answering accurately requires separate retrieval/answering steps
 """
 
     class SubQuestionsSchema(BaseModel):
-        is_multi_question: bool = Field(description="Whether the question should be decomposed into multiple sub-questions")
+        is_multi_question: bool = Field(
+            description="Whether the question should be decomposed into multiple sub-questions")
         sub_questions: List[str] = Field(description="List of standalone sub-questions. Empty if no split is needed")
 
     pydantic_schema = re.sub(r"^ {4}", "", inspect.getsource(SubQuestionsSchema), flags=re.MULTILINE)
@@ -53,6 +110,41 @@ Output:
     user_prompt = 'Question: "{question}"'
     system_prompt = build_system_prompt(instruction, example)
     system_prompt_with_schema = build_system_prompt(instruction, example, pydantic_schema)
+
+
+class AnswerWithRAGContextPrompt:
+    instruction = """
+You are a RAG (Retrieval-Augmented Generation) answering system.
+Your task is to answer the given question based only on the provided context pages.
+
+Before giving a final answer, think step by step and rely only on explicit evidence from context.
+If the answer is missing or ambiguous, return 'N/A'.
+"""
+
+    user_prompt = """
+Here is the context:
+\"\"\"
+{context}
+\"\"\"
+
+---
+
+Here is the question:
+"{question}"
+"""
+
+    class AnswerSchema(BaseModel):
+        step_by_step_analysis: str = Field(description="Detailed step-by-step analysis grounded in provided context.")
+        reasoning_summary: str = Field(description="Concise summary of the reasoning process.")
+        relevant_pages: List[int] = Field(description="List of context page numbers used for the answer.")
+        final_answer: Union[str, Literal['N/A']] = Field(
+            description="Final answer extracted from context. Return 'N/A' if unavailable."
+        )
+
+    pydantic_schema = re.sub(r"^ {4}", "", inspect.getsource(AnswerSchema), flags=re.MULTILINE)
+    system_prompt = build_system_prompt(instruction)
+    system_prompt_with_schema = build_system_prompt(instruction, pydantic_schema=pydantic_schema)
+
 
 
 class ComparativeAnswerPrompt:
@@ -117,6 +209,7 @@ Answer:
 
     system_prompt_with_schema = build_system_prompt(instruction, example, pydantic_schema)
 
+
 class AnswerSchemaFixPrompt:
     system_prompt = """
 You are a JSON formatter.
@@ -138,8 +231,6 @@ Here is the LLM response that not following the schema and needs to be properly 
 {response}
 \"\"\"
 """
-
-
 
 
 class RerankingPrompt:
@@ -201,10 +292,14 @@ Instructions:
    - No assumptions: Do not infer information beyond what's explicitly stated in the block.
 """
 
+
 class RetrievalRankingSingleBlock(BaseModel):
     """Rank retrieved text block relevance to a query."""
-    reasoning: str = Field(description="Analysis of the block, identifying key information and how it relates to the query")
-    relevance_score: float = Field(description="Relevance score from 0 to 1, where 0 is Completely Irrelevant and 1 is Perfectly Relevant")
+    reasoning: str = Field(
+        description="Analysis of the block, identifying key information and how it relates to the query")
+    relevance_score: float = Field(
+        description="Relevance score from 0 to 1, where 0 is Completely Irrelevant and 1 is Perfectly Relevant")
+
 
 class RetrievalRankingMultipleBlocks(BaseModel):
     """Rank retrieved multiple text blocks relevance to a query."""
