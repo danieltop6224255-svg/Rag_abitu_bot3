@@ -664,23 +664,43 @@ class AsyncOpenaiProcessor:
                     print(f"[ERROR] Line {line_number}: Failed to load JSON from line: {raw_line}")
                     continue
 
+                metadata = result[2] if len(result) > 2 and isinstance(result[2], dict) else {"original_index": line_number - 1}
+
+                # Failed requests are stored as [request_json, [errors...], metadata]
+                if not isinstance(result[1], dict):
+                    print(f"[ERROR] Line {line_number}: request failed, raw errors: {result[1]}")
+                    results.append({
+                        'index': metadata,
+                        'question': result[0].get('messages', []),
+                        'answer': {
+                            'subject_core_entities_list': [],
+                            'relevant_headers_list': [],
+                            'information_blocks': []
+                        }
+                    })
+                    continue
+
                 # Check finish_reason in the API response
-                finish_reason = result[1]['choices'][0].get('finish_reason', '')
+                finish_reason = result[1].get('choices', [{}])[0].get('finish_reason', '')
                 if finish_reason != "stop":
                     print(f"[WARNING] Line {line_number}: finish_reason is '{finish_reason}' (expected 'stop').")
 
-                # Safely parse answer; if it fails, leave answer empty and report the error.
+                # Safely parse answer; if it fails, return empty valid schema-shaped answer.
                 try:
                     answer_content = result[1]['choices'][0]['message']['content']
                     answer_parsed = json.loads(answer_content)
                     answer = response_format(**answer_parsed).model_dump()
                 except Exception as e:
                     print(f"[ERROR] Line {line_number}: Failed to parse answer JSON. Error: {e}.")
-                    answer = ""
+                    answer = {
+                        'subject_core_entities_list': [],
+                        'relevant_headers_list': [],
+                        'information_blocks': []
+                    }
 
                 results.append({
-                    'index': result[2],
-                    'question': result[0]['messages'],
+                    'index': metadata,
+                    'question': result[0].get('messages', []),
                     'answer': answer
                 })
             

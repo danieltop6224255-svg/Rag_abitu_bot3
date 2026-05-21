@@ -31,6 +31,17 @@ def process_messages():
         tqdm.write(msg)
 
 class TableSerializer(BaseOpenaiProcessor):
+
+    @staticmethod
+    def _resolve_table_id(table: dict, fallback_index: int) -> int:
+        """Return stable table identifier across legacy/new schemas."""
+        if isinstance(table, dict):
+            if "table_id" in table:
+                return table["table_id"]
+            if "id" in table:
+                return table["id"]
+        return fallback_index
+
     def __init__(self, preserve_temp_files: bool = True):
         super().__init__()
         self.preserve_temp_files = preserve_temp_files
@@ -48,7 +59,17 @@ class TableSerializer(BaseOpenaiProcessor):
         self.logger.propagate = False
 
     def _get_table_context(self, json_report, target_table_index):
-        table_info = next(table for table in json_report["tables"] if table["table_id"] == target_table_index)
+        table_info = next(
+            (
+                table
+                for idx, table in enumerate(json_report["tables"])
+                if self._resolve_table_id(table, idx) == target_table_index
+            ),
+            None
+        )
+        if table_info is None:
+            self.logger.warning(f"Table {target_table_index} not found in tables list")
+            return "", ""
         page_num = table_info["page"]
         
         page_content = next(
@@ -139,8 +160,22 @@ class TableSerializer(BaseOpenaiProcessor):
         context_before, context_after = self._get_table_context(json_report, target_table_index)
         
         # Get the table content
-        table_info = next(table for table in json_report["tables"] if table["table_id"] == target_table_index)
-        table_content = table_info["html"]
+        table_info = next(
+            (
+                table
+                for idx, table in enumerate(json_report["tables"])
+                if self._resolve_table_id(table, idx) == target_table_index
+            ),
+            None
+        )
+        if table_info is None:
+            self.logger.warning(f"Table {target_table_index} not found in tables list")
+            return {
+                "subject_core_entities_list": [],
+                "relevant_headers_list": [],
+                "information_blocks": []
+            }
+        table_content = table_info.get("html", "")
         
         # Serialize the table with its context
         result = self._send_serialization_request(
@@ -154,8 +189,8 @@ class TableSerializer(BaseOpenaiProcessor):
     def serialize_tables(self, json_report: dict) -> dict:
         """Process all tables in the report and add serialization results to each table's info"""
         
-        for table in json_report["tables"]:
-            table_index = table["table_id"]
+        for idx, table in enumerate(json_report["tables"]):
+            table_index = self._resolve_table_id(table, idx)
             
             # Get serialization results for current table
             serialization_result = self._serialize_table(
@@ -178,13 +213,20 @@ class TableSerializer(BaseOpenaiProcessor):
         queries = []
         table_indices = []
         
-        for table in json_report["tables"]:
-            table_index = table["table_id"]
+        for idx, table in enumerate(json_report["tables"]):
+            table_index = self._resolve_table_id(table, idx)
             table_indices.append(table_index)
             
             context_before, context_after = self._get_table_context(json_report, table_index)
-            table_info = next(table for table in json_report["tables"] if table["table_id"] == table_index)
-            table_content = table_info["html"]
+            table_info = next(
+                (
+                    item
+                    for item_idx, item in enumerate(json_report["tables"])
+                    if self._resolve_table_id(item, item_idx) == table_index
+                ),
+                None
+            )
+            table_content = table_info.get("html", "") if isinstance(table_info, dict) else ""
             
             # Construct the query
             query = ""
@@ -211,16 +253,33 @@ class TableSerializer(BaseOpenaiProcessor):
 
         # Add results back to json_report
         for table_index, result in zip(table_indices, results):
-            table_info = next(table for table in json_report["tables"] if table["table_id"] == table_index)
+            table_info = next(
+                (
+                    item
+                    for item_idx, item in enumerate(json_report["tables"])
+                    if self._resolve_table_id(item, item_idx) == table_index
+                ),
+                None
+            )
+            if table_info is None:
+                self.logger.warning(f"Skipping merge: table {table_index} not found")
+                continue
             
             new_table = {}
             for key, value in table_info.items():
                 new_table[key] = value
                 if key == "html":
-                    new_table["serialized"] = result["answer"]
+                    answer = result.get("answer") if isinstance(result, dict) else None
+                    if not isinstance(answer, dict):
+                        answer = {
+                            "subject_core_entities_list": [],
+                            "relevant_headers_list": [],
+                            "information_blocks": []
+                        }
+                    new_table["serialized"] = answer
             
             for i, table in enumerate(json_report["tables"]):
-                if table["table_id"] == table_index:
+                if self._resolve_table_id(table, i) == table_index:
                     json_report["tables"][i] = new_table
 
         return json_report
