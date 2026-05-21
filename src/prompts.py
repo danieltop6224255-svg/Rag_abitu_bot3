@@ -348,7 +348,7 @@ True answer:
 class ChunkUsefulnessPrompt:
     instruction = """
 You are a retrieval quality evaluator for RAG.
-Given a question, true answer, and one retrieved chunk, evaluate:
+Given a question, true answer, and one or more retrieved chunks, evaluate for each chunk:
 1) usefulness of this chunk for producing the true answer;
 2) probability that the chunk is actually about the asked topic.
 
@@ -392,10 +392,8 @@ True answer:
 {true_answer}
 \"\"\"
 
-Retrieved chunk:
-\"\"\"
-{chunk_text}
-\"\"\"
+Retrieved chunks:
+{chunks_block}
 """
 
     class ChunkUsefulnessSchema(BaseModel):
@@ -403,7 +401,12 @@ Retrieved chunk:
         topic_relevance_probability: float = Field(description="How likely the chunk is about the exact question topic, from 0.0 to 1.0.")
         explanation: str = Field(description="Short explanation for both scores.")
 
-    pydantic_schema = re.sub(r"^ {4}", "", inspect.getsource(ChunkUsefulnessSchema), flags=re.MULTILINE)
+    class ChunkUsefulnessMultipleSchema(BaseModel):
+        chunk_evaluations: List[ChunkUsefulnessSchema] = Field(
+            description="Evaluations for all provided chunks, in the same order as input chunks."
+        )
+
+    pydantic_schema = re.sub(r"^ {4}", "", inspect.getsource(ChunkUsefulnessMultipleSchema), flags=re.MULTILINE)
     system_prompt = build_system_prompt(instruction)
     system_prompt_with_schema = build_system_prompt(instruction, pydantic_schema=pydantic_schema)
 
