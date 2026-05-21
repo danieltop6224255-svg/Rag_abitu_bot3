@@ -60,7 +60,11 @@ class TableSerializer(BaseOpenaiProcessor):
 
     def _get_table_context(self, json_report, target_table_index):
         table_info = next(
-            (table for table in json_report["tables"] if self._resolve_table_id(table, -1) == target_table_index),
+            (
+                table
+                for idx, table in enumerate(json_report["tables"])
+                if self._resolve_table_id(table, idx) == target_table_index
+            ),
             None
         )
         if table_info is None:
@@ -157,7 +161,11 @@ class TableSerializer(BaseOpenaiProcessor):
         
         # Get the table content
         table_info = next(
-            (table for table in json_report["tables"] if self._resolve_table_id(table, -1) == target_table_index),
+            (
+                table
+                for idx, table in enumerate(json_report["tables"])
+                if self._resolve_table_id(table, idx) == target_table_index
+            ),
             None
         )
         if table_info is None:
@@ -211,7 +219,11 @@ class TableSerializer(BaseOpenaiProcessor):
             
             context_before, context_after = self._get_table_context(json_report, table_index)
             table_info = next(
-                (table for table in json_report["tables"] if self._resolve_table_id(table, -1) == table_index),
+                (
+                    item
+                    for item_idx, item in enumerate(json_report["tables"])
+                    if self._resolve_table_id(item, item_idx) == table_index
+                ),
                 None
             )
             table_content = table_info.get("html", "") if isinstance(table_info, dict) else ""
@@ -242,7 +254,11 @@ class TableSerializer(BaseOpenaiProcessor):
         # Add results back to json_report
         for table_index, result in zip(table_indices, results):
             table_info = next(
-                (table for table in json_report["tables"] if self._resolve_table_id(table, -1) == table_index),
+                (
+                    item
+                    for item_idx, item in enumerate(json_report["tables"])
+                    if self._resolve_table_id(item, item_idx) == table_index
+                ),
                 None
             )
             if table_info is None:
